@@ -86,23 +86,32 @@ m2.metric("Avg Forecast Error (MAPE)", f"{mape_yest:.2f}%")
 m3.metric("Current Variance", f"{current_error:.1f}%", delta_color="inverse")
 
 # --- 7. VISUALIZATIONS ---
-tab1, tab2 = st.tabs(["Operational View", "Variance Analysis"])
+tab1, tab2 = st.tabs(["📈 Operational Comparison", "📊 Variance Analysis"])
 
 with tab1:
+    st.subheader("Comparison: Forecast vs. Real-Time Load")
+    
+    # FIG 1: Week-Old Forecast vs Actual
+    fig1 = go.Figure()
+    fig1.add_trace(go.Scatter(x=load['Interval End'], y=load['Load'], name='Actual Load', line=dict(color='blue')))
+    fig1.add_trace(go.Scatter(x=df_week['Interval End'], y=df_week['Load Forecast'], name='7-Day Forecast', line=dict(color='red', dash='dash')))
+    fig1.update_layout(title="7-Day Forecast Accuracy", template="plotly_white", hovermode="x unified")
+    st.plotly_chart(fig1, use_container_width=True)
+
+    st.divider() # Adds a nice line between them
+
+    # FIG 2: Yesterday's Forecast vs Actual
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(x=load['Interval End'], y=load['Load'], name='Actual Load', line=dict(color='blue')))
     fig2.add_trace(go.Scatter(x=df_yest['Interval End'], y=df_yest['Load Forecast'], name='1-Day Forecast', line=dict(color='green', dash='dash')))
-    fig2.update_layout(title="Real-Time Load vs. Yesterday's Forecast", template="plotly_white", hovermode="x unified")
+    fig2.update_layout(title="1-Day Forecast Accuracy", template="plotly_white", hovermode="x unified")
     st.plotly_chart(fig2, use_container_width=True)
 
 with tab2:
-    fig3 = go.Figure()
-    fig3.add_trace(go.Bar(x=diff_week['Interval End'], y=diff_week['Pct_Diff'], name='7-Day Error %', marker_color='red', opacity=0.6))
-    fig3.add_trace(go.Bar(x=diff_yest['Interval End'], y=diff_yest['Pct_Diff'], name='1-Day Error %', marker_color='green', opacity=0.6))
-    fig3.update_layout(title="Forecast Error Convergence (7-Day vs 1-Day)", yaxis_title="Error (%)", barmode='group', template="plotly_white")
-    fig3.add_hline(y=0, line_color="black")
+    st.subheader("Detailed Error Comparison")
+    # This keeps your bar chart on its own page
     st.plotly_chart(fig3, use_container_width=True)
-
+    st.info("Positive % indicates Under-Forecast (Actual > Forecast). Negative % indicates Over-Forecast.")
 # --- 8. ANALYST LOG ---
 st.divider()
 st.subheader("📋 Automated Analyst Briefing")
