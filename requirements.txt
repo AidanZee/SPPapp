@@ -1,4 +1,4 @@
 gridstatus==0.26.0
-pandas<3.0.0
+pandas==2.2.2
 plotly
 streamlit
