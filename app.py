@@ -108,10 +108,13 @@ with tab1:
     st.plotly_chart(fig2, use_container_width=True)
 
 with tab2:
-    st.subheader("Detailed Error Comparison")
-    # This keeps your bar chart on its own page
+    fig3 = go.Figure()
+    fig3.add_trace(go.Bar(x=diff_week['Interval End'], y=diff_week['Pct_Diff'], name='7-Day Error %', marker_color='red', opacity=0.6))
+    fig3.add_trace(go.Bar(x=diff_yest['Interval End'], y=diff_yest['Pct_Diff'], name='1-Day Error %', marker_color='green', opacity=0.6))
+    fig3.update_layout(title="Forecast Error Convergence (7-Day vs 1-Day)", yaxis_title="Error (%)", barmode='group', template="plotly_white")
+    fig3.add_hline(y=0, line_color="black")
     st.plotly_chart(fig3, use_container_width=True)
-    st.info("Positive % indicates Under-Forecast (Actual > Forecast). Negative % indicates Over-Forecast.")
+
 # --- 8. ANALYST LOG ---
 st.divider()
 st.subheader("📋 Automated Analyst Briefing")
