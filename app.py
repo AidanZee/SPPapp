@@ -3,6 +3,7 @@ import gridstatus
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
+import sqlite3
 import os
 
 # --- 1. WEB CONFIG & STYLING ---
@@ -10,50 +11,90 @@ st.set_page_config(page_title="SPP Analyst Dashboard", layout="wide")
 st.title("⚡ SPP Operational Performance Dashboard")
 st.markdown("Automated Analysis of Southwest Power Pool Load and Forecast Variance")
 
-# --- 2. SIDEBAR CONTROLS ---
+# --- 2. DATABASE SETUP ---
+DB_NAME = "spp_data.db"
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_NAME)
+    return conn
+
+# Create tables if they don't exist
+with get_db_connection() as conn:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS actual_load (
+            "Interval End" TEXT PRIMARY KEY,
+            "Load" REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS forecasts (
+            "Interval End" TEXT,
+            "Publish Time" TEXT,
+            "Load Forecast" REAL,
+            "Forecast Type" TEXT,
+            PRIMARY KEY ("Interval End", "Forecast Type")
+        )
+    """)
+
+# --- 3. SIDEBAR CONTROLS ---
 with st.sidebar:
     st.header("Control Panel")
     if st.button('🔄 Sync Live SPP Data'):
-        # Clear cache to force a fresh download
-        for f in ["spp_load_cache.csv", "spp_load_forecast_cache.csv", "spp_load_forecast_YESTERDAY_cache.csv"]:
-            if os.path.exists(f): os.remove(f)
-        st.success("Cache cleared! Fetching fresh data...")
+        # Clear database tables instead of deleting files
+        with get_db_connection() as conn:
+            conn.execute("DELETE FROM actual_load")
+            conn.execute("DELETE FROM forecasts")
+        st.success("Database cleared! Fetching fresh data...")
         st.rerun()
     
     st.info("This tool performs automated Variance Analysis comparing 7-day and 1-day forecasts against real-time 5-minute load data.")
 
-# --- 3. SETUP & DATES ---
+# --- 4. SETUP & DATES ---
 now = datetime.now().replace(microsecond=0)
 yesterday = now - timedelta(days=1)
 weekAgo = now - timedelta(days=6)
 
 spp = gridstatus.SPP()
 
-# --- 4. DATA ACQUISITION & CACHING ---
+# --- 5. DATA ACQUISITION & SQL STORAGE ---
+def store_data(df, table_name):
+    with get_db_connection() as conn:
+        df.to_sql(table_name, conn, if_exists='append', index=False, method='multi')
+        # Cleanup duplicates that might have been appended
+        if table_name == 'actual_load':
+            conn.execute('DELETE FROM actual_load WHERE rowid NOT IN (SELECT min(rowid) FROM actual_load GROUP BY "Interval End")')
+
 # Actual Load
-cache_file_load = "spp_load_cache.csv"
-if not os.path.exists(cache_file_load):
-    with st.spinner("Downloading real-time actuals..."):
-        load = spp.get_load(date=yesterday, end=now)
-        load.to_csv(cache_file_load, index=False)
-load = pd.read_csv(cache_file_load)
+with get_db_connection() as conn:
+    check_load = pd.read_sql("SELECT COUNT(*) as count FROM actual_load", conn)['count'][0]
 
-# Forecasts
-cache_file_forecast_week = "spp_load_forecast_cache.csv"
-if not os.path.exists(cache_file_forecast_week):
-    with st.spinner("Downloading 7-day forecast..."):
-        load_forecast_week = spp.get_load_forecast(date=weekAgo)
-        load_forecast_week.to_csv(cache_file_forecast_week, index=False)
-df_week_raw = pd.read_csv(cache_file_forecast_week)
+if check_load == 0:
+    with st.spinner("Downloading and storing real-time actuals..."):
+        load_data = spp.get_load(date=yesterday, end=now)
+        store_data(load_data[['Interval End', 'Load']], 'actual_load')
 
-cache_file_forecast_yesterday = "spp_load_forecast_YESTERDAY_cache.csv"
-if not os.path.exists(cache_file_forecast_yesterday):
-    with st.spinner("Downloading 1-day forecast..."):
-        load_forecast_yest = spp.get_load_forecast(date=yesterday)
-        load_forecast_yest.to_csv(cache_file_forecast_yesterday, index=False)
-df_yest_raw = pd.read_csv(cache_file_forecast_yesterday)
+load = pd.read_sql("SELECT * FROM actual_load", get_db_connection())
 
-# --- 5. CLEANING & ANALYTICS ---
+# Forecasts (7-Day and 1-Day)
+with get_db_connection() as conn:
+    check_forecasts = pd.read_sql("SELECT COUNT(*) as count FROM forecasts", conn)['count'][0]
+
+if check_forecasts == 0:
+    with st.spinner("Downloading forecasts..."):
+        # Week Ago
+        f_week = spp.get_load_forecast(date=weekAgo)
+        f_week['Forecast Type'] = '7-Day'
+        # Yesterday
+        f_yest = spp.get_load_forecast(date=yesterday)
+        f_yest['Forecast Type'] = '1-Day'
+        
+        combined_f = pd.concat([f_week, f_yest])
+        store_data(combined_f[['Interval End', 'Publish Time', 'Load Forecast', 'Forecast Type']], 'forecasts')
+
+df_week_raw = pd.read_sql("SELECT * FROM forecasts WHERE \"Forecast Type\" = '7-Day'", get_db_connection())
+df_yest_raw = pd.read_sql("SELECT * FROM forecasts WHERE \"Forecast Type\" = '1-Day'", get_db_connection())
+
+# --- 6. CLEANING & ANALYTICS ---
 def clean_and_window(df, start, end):
     df['Interval End'] = pd.to_datetime(df['Interval End']).dt.tz_localize(None)
     if 'Publish Time' in df.columns:
@@ -75,7 +116,7 @@ def get_diff(actuals, forecast):
 diff_week = get_diff(actual_hourly, df_week)
 diff_yest = get_diff(actual_hourly, df_yest)
 
-# --- 6. KPI METRICS ---
+# --- 7. KPI METRICS ---
 mape_yest = diff_yest['Pct_Diff'].abs().mean()
 peak_load = load['Load'].max()
 current_error = diff_yest['Pct_Diff'].iloc[-1] if not diff_yest.empty else 0
@@ -85,22 +126,19 @@ m1.metric("Peak System Load", f"{peak_load:,.0f} MW")
 m2.metric("Avg Forecast Error (MAPE)", f"{mape_yest:.2f}%")
 m3.metric("Current Variance", f"{current_error:.1f}%", delta_color="inverse")
 
-# --- 7. VISUALIZATIONS ---
+# --- 8. VISUALIZATIONS ---
 tab1, tab2 = st.tabs(["📈 Operational Comparison", "📊 Variance Analysis"])
 
 with tab1:
     st.subheader("Comparison: Forecast vs. Real-Time Load")
-    
-    # FIG 1: Week-Old Forecast vs Actual
     fig1 = go.Figure()
     fig1.add_trace(go.Scatter(x=load['Interval End'], y=load['Load'], name='Actual Load', line=dict(color='blue')))
     fig1.add_trace(go.Scatter(x=df_week['Interval End'], y=df_week['Load Forecast'], name='7-Day Forecast', line=dict(color='red', dash='dash')))
     fig1.update_layout(title="7-Day Forecast Accuracy", template="plotly_white", hovermode="x unified")
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.divider() # Adds a nice line between them
+    st.divider()
 
-    # FIG 2: Yesterday's Forecast vs Actual
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(x=load['Interval End'], y=load['Load'], name='Actual Load', line=dict(color='blue')))
     fig2.add_trace(go.Scatter(x=df_yest['Interval End'], y=df_yest['Load Forecast'], name='1-Day Forecast', line=dict(color='green', dash='dash')))
@@ -115,9 +153,9 @@ with tab2:
     fig3.add_hline(y=0, line_color="black")
     st.plotly_chart(fig3, use_container_width=True)
 
-# --- 8. ANALYST LOG ---
+# --- 9. ANALYST LOG ---
 st.divider()
-st.subheader("📋 Automated Analyst Briefing")
+st.subheader("📝 Automated Analyst Briefing")
 if mape_yest < 3.0:
     st.success(f"System performing within reliability bounds. Current MAPE: {mape_yest:.2f}%")
 else:
