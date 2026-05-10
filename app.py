@@ -57,21 +57,26 @@ weekAgo = now - timedelta(days=6)
 spp = gridstatus.SPP()
 
 # --- 5. DATA ACQUISITION & SQL STORAGE ---
-def store_data(df, table_name):
+def store_data(df, table_name, mode='append'):
     with get_db_connection() as conn:
-        df.to_sql(table_name, conn, if_exists='append', index=False, method='multi')
-        # Cleanup duplicates that might have been appended
-        if table_name == 'actual_load':
-            conn.execute('DELETE FROM actual_load WHERE rowid NOT IN (SELECT min(rowid) FROM actual_load GROUP BY "Interval End")')
+        # We add 'mode' so we can choose to 'replace' or 'append'
+        df.to_sql(table_name, conn, if_exists=mode, index=False, method='multi')
 
 # Actual Load
 with get_db_connection() as conn:
-    check_load = pd.read_sql("SELECT COUNT(*) as count FROM actual_load", conn)['count'][0]
+    # Use a try-except block in case the table doesn't exist yet
+    try:
+        check_load = pd.read_sql("SELECT COUNT(*) as count FROM actual_load", conn)['count'][0]
+    except:
+        check_load = 0
 
 if check_load == 0:
     with st.spinner("Downloading and storing real-time actuals..."):
         load_data = spp.get_load(date=yesterday, end=now)
-        store_data(load_data[['Interval End', 'Load']], 'actual_load')
+        # Use 'replace' here to avoid the UNIQUE constraint error on first run
+        store_data(load_data[['Interval End', 'Load']], 'actual_load', mode='replace')
+
+# ... Repeat the same logic for the Forecasts section ...
 
 load = pd.read_sql("SELECT * FROM actual_load", get_db_connection())
 
