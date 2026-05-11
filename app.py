@@ -8,7 +8,7 @@ import os
 
 # --- 1. WEB CONFIG & STYLING ---
 st.set_page_config(page_title="SPP Analyst Dashboard", layout="wide")
-st.title("⚡ SPP Operational Performance Dashboard")
+st.title(" SPP Operational Performance Dashboard")
 st.markdown("Automated Analysis of Southwest Power Pool Load and Forecast Variance")
 
 # --- 2. DATABASE SETUP ---
