@@ -39,7 +39,7 @@ with get_db_connection() as conn:
 # --- 3. SIDEBAR CONTROLS ---
 with st.sidebar:
     st.header("Control Panel")
-    if st.button('🔄 Sync Live SPP Data'):
+    if st.button('Sync Live SPP Data'):
         # Clear database tables instead of deleting files
         with get_db_connection() as conn:
             conn.execute("DELETE FROM actual_load")
@@ -132,7 +132,7 @@ m2.metric("Avg Forecast Error (MAPE)", f"{mape_yest:.2f}%")
 m3.metric("Current Variance", f"{current_error:.1f}%", delta_color="inverse")
 
 # --- 8. VISUALIZATIONS ---
-tab1, tab2 = st.tabs(["📈 Operational Comparison", "📊 Variance Analysis"])
+tab1, tab2 = st.tabs(["Operational Comparison", "Variance Analysis"])
 
 with tab1:
     st.subheader("Comparison: Forecast vs. Real-Time Load")
@@ -160,7 +160,7 @@ with tab2:
 
 # --- 9. ANALYST LOG ---
 st.divider()
-st.subheader("📝 Automated Analyst Briefing")
+st.subheader("Automated Analyst Briefing")
 if mape_yest < 3.0:
     st.success(f"System performing within reliability bounds. Current MAPE: {mape_yest:.2f}%")
 else:
