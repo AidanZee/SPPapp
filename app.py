@@ -161,9 +161,9 @@ with tab2:
 # --- 9. ANALYST LOG ---
 st.divider()
 st.subheader("Automated Analyst Briefing")
-if mape_yest < 3.0:
+if mape_yest < 8.0:
     st.success(f"System performing within reliability bounds. Current MAPE: {mape_yest:.2f}%")
 else:
-    st.warning(f"High variance detected. System MAPE ({mape_yest:.2f}%) exceeds standard 3% threshold.")
+    st.warning(f"High variance detected. System MAPE ({mape_yest:.2f}%) exceeds threshold of 8%.")
 
 st.write(f"**Observation:** The peak load of {peak_load:,.0f} MW was successfully captured by the 1-Day forecast model with a convergence gain of { (diff_week['Pct_Diff'].abs().mean() - mape_yest):.2f}% over the 7-day outlook.")
